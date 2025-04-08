@@ -1,0 +1,41 @@
+{
+    "name": "better-command",
+    "version": "1.0.0",
+    "license": "MIT",
+    "description": "一个轻量化的类型友好的命令行解析工具，适用于Bun运行时",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/mchao123/better-command.git"
+    },
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/mod.d.ts",
+            "import": "./dist/mod.js"
+        },
+        "./plugin": {
+            "types": "./dist/plugin.d.ts",
+            "import": "./dist/plugin.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "npx tsup src/mod.ts src/plugin.ts --format esm --dts",
+        "prepublishOnly": "npm run build"
+    },
+    "author": "ZhangSan",
+    "devDependencies": {
+        "typescript": "^5.2.2",
+        "tsup": "^8.0.2"
+    },
+    "keywords": [
+        "command",
+        "cli",
+        "bun",
+        "typescript"
+    ]
+}
