@@ -7,7 +7,7 @@ export enum ArgType {
 
 export type CommandActionEvent<T extends CommandParserInit = CommandParserInit> = {
   opts: T;
-  args: readonly ArgumentObject<any, any>[];
+  args: readonly ArgumentObject[];
   argv: string[];
   commands: CommandObject[];
 }
@@ -22,11 +22,12 @@ export declare interface CommandParserOpts extends Command {
 }
 
 
-export type ArgumentObject<TName extends string = string, TRequired extends boolean = false, TType extends ArgType = ArgType> = Argument & {
+export type ArgumentObject<TName extends string = string, TRequired extends boolean = false, TAaray extends boolean = false, TType extends ArgType = ArgType> = Argument & {
   name: TName;
   alias: string[];
   type: TType;
   required: TRequired;
+  isArray: TAaray;
 }
 
 export type CommandObject = Command & {
@@ -35,9 +36,9 @@ export type CommandObject = Command & {
   action: (e: CommandActionEvent) => void;
 }
 
-export type CommandParserObject<T extends readonly ArgumentObject<any, any>[], Opts extends CommandParserInit = CommandParserInit> = {
+export type CommandParserObject<T extends readonly ArgumentObject<any, any, any, any>[], Opts extends CommandParserInit = CommandParserInit> = {
   opts: Opts;
-  parse: (argv: string[], callback: (args: ArgumentsToObject<T>) => void, onError?: (err: Error, args: string[]) => void) => void;
+  parse: (argv: string[], callback: (args: ArgumentsToObject<T>) => void, onError?: (err: Error, args: string[]) => void) => Promise<boolean>;
 }
 
 
@@ -49,8 +50,10 @@ type ArgTypeToTS<T extends ArgType> =
   T extends ArgType.Boolean ? boolean :
   never;
 
-type ArgumentsToObject<T extends readonly ArgumentObject<any, any>[]> = {
-  [P in T[number]as P['name']]: P extends ArgumentObject<any, true, any>
+type ArgumentsToObject<T extends readonly ArgumentObject<any, any, any, any>[]> = {
+  [P in T[number]as P['name']]: P extends ArgumentObject<any, any, true, any>
+  ? ArgTypeToTS<P['type']>[]
+  : P extends ArgumentObject<any, true, false, any>
   ? ArgTypeToTS<P['type']>
   : ArgTypeToTS<P['type']> | undefined;
 };
@@ -58,24 +61,25 @@ type ArgumentsToObject<T extends readonly ArgumentObject<any, any>[]> = {
 
 
 
-
-
-interface CommandArgInit<TType extends ArgType = ArgType, TRequired extends boolean = false> extends Argument {
+interface CommandArgInit<TType extends ArgType = ArgType, TRequired extends boolean = false, TAaray extends boolean = false> extends Argument {
   type: TType;
   required?: TRequired;
+  isArray?: TAaray;
 }
 
 export const arg = <
   const TName extends string,
   const TRequired extends boolean = false,
-  TType extends ArgType = ArgType.String
+  const TArray extends boolean = false,
+  const TType extends ArgType = ArgType.String,
 >(
   name: TName | [TName, ...string[]],
-  init: CommandArgInit<TType, TRequired>,
-): ArgumentObject<TName, TRequired, TType> => ({
+  init: CommandArgInit<TType, TRequired, TArray>,
+): ArgumentObject<TName, TRequired, TArray, TType> => ({
   ...init,
   name: Array.isArray(name) ? name[0] : name,
   alias: Array.isArray(name) ? name.slice(1) : [],
+  isArray: init.isArray ?? false as TArray,
   required: init.required ?? false as TRequired,
   type: init.type ?? ArgType.String,
 
@@ -93,7 +97,26 @@ const parseValue = (value: string, type: ArgType, name: string): any => {
   return value;
 };
 
+const parseArg = (current: string): [string, string | null] => {
+  // Handle --key=value format
+  if (current.includes('=')) {
+    const [key, value] = current.split('=', 2);
+    return [key, value];
+  }
+  return [current, null];
+};
 
+const addOrSetValue = (result: Record<string, any>, name: string, value: any, isArray: boolean) => {
+  if (isArray) {
+    if (!result[name]) {
+      result[name] = [value];
+    } else {
+      result[name].push(value);
+    }
+  } else {
+    result[name] = value;
+  }
+};
 
 const isCommandParser = (obj: any): obj is CommandParserObject<any, any> => {
   return 'parse' in obj;
@@ -136,7 +159,7 @@ interface CommandParserInit extends CommandParserOpts {
   commands?: CommandObject[];
 }
 
-export const defineCommandParser = <Opts extends CommandParserInit, T extends readonly ArgumentObject<any, any>[]>(
+export const defineCommandParser = <Opts extends CommandParserInit, T extends readonly ArgumentObject<any, any, any, any>[]>(
   opts: Opts,
   ...args: T
 ): CommandParserObject<T, Opts> => {
@@ -161,7 +184,7 @@ export const defineCommandParser = <Opts extends CommandParserInit, T extends re
         return true;
       }
 
-      const argMap = new Map<string, ArgumentObject<any, any>>();
+      const argMap = new Map<string, ArgumentObject>();
       for (const arg of args) {
         argMap.set(`--${arg.name}`, arg);
         for (const alias of arg.alias) {
@@ -179,22 +202,39 @@ export const defineCommandParser = <Opts extends CommandParserInit, T extends re
           const current = argv[i];
           if (current.startsWith('-')) {
             usingNamedArgs = true;
-            const argDef = argMap.get(current);
-            if (!argDef) throw new Error(`Unknown option: ${current}`);
+            const [key, value] = parseArg(current);
+            const argDef = argMap.get(key);
+            if (!argDef) throw new Error(`Unknown option: ${key}`);
 
             if (argDef.type === ArgType.Boolean) {
-              result[argDef.name] = true;
+              if (value !== null) {
+                // Handle --bool=true/false format
+                addOrSetValue(result, argDef.name, value.toLowerCase() === 'true' || value === '1', argDef.isArray);
+              } else if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+                // Handle --bool true/false format
+                addOrSetValue(result, argDef.name, parseValue(argv[++i], ArgType.Boolean, argDef.name), argDef.isArray);
+              } else {
+                // Handle flag format (--bool)
+                addOrSetValue(result, argDef.name, true, argDef.isArray);
+              }
               i++;
             } else {
-              if (i + 1 >= argv.length) throw new Error(`Missing value for option: ${current}`);
-              result[argDef.name] = parseValue(argv[++i], argDef.type, argDef.name);
-              i++;
+              if (value !== null) {
+                // Handle --key=value format
+                addOrSetValue(result, argDef.name, parseValue(value, argDef.type, argDef.name), argDef.isArray);
+                i++;
+              } else {
+                // Handle --key value format
+                if (i + 1 >= argv.length) throw new Error(`Missing value for option: ${key}`);
+                addOrSetValue(result, argDef.name, parseValue(argv[++i], argDef.type, argDef.name), argDef.isArray);
+                i++;
+              }
             }
           } else if (usingNamedArgs) {
             throw new Error(`Unexpected positional argument: ${current} after named arguments`);
           } else if (positionalIndex < args.length) {
             const argDef = args[positionalIndex++];
-            result[argDef.name] = parseValue(current, argDef.type, argDef.name);
+            addOrSetValue(result, argDef.name, parseValue(current, argDef.type, argDef.name), argDef.isArray);
             i++;
           } else {
             i++;
@@ -205,7 +245,7 @@ export const defineCommandParser = <Opts extends CommandParserInit, T extends re
         for (const argDef of args) {
           if (result[argDef.name] === undefined) {
             if (argDef.required) throw new Error(`Missing required argument: ${argDef.name}`);
-            result[argDef.name] = argDef.type === ArgType.Boolean ? false : undefined;
+            result[argDef.name] = argDef.isArray ? [] : (argDef.type === ArgType.Boolean ? false : undefined);
           }
         }
 

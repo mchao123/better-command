@@ -1,6 +1,6 @@
 {
     "name": "better-command",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "license": "MIT",
     "description": "一个轻量化的类型友好的命令行解析工具，适用于Bun运行时",
     "repository": {
