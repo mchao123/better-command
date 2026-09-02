@@ -3,6 +3,7 @@
 一个轻量化的类型友好的命令行解析工具，适用于Bun运行时。提供完整的 TypeScript 类型支持和灵活的命令行参数处理能力。
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/better-command.svg)](https://www.npmjs.com/package/better-command)
 
 ## 特性
 
@@ -146,7 +147,9 @@ const { parse } = defineCommandParser({
 ```
 
 
-## 其它
+## 关于我们
+
+本项目同时发布在 npm，最新版本请查看 [better-command](https://www.npmjs.com/package/better-command)。欢迎通过 [GitHub](https://github.com/mchao123/better-command) 提交问题和 PR。
 
 1. 这个包我最初是给bun使用的，nodejs用户版本可能需要稍微高一些（我也不确定）
 2. 不咋会写文档，有问题欢迎PR

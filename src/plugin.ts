@@ -19,27 +19,32 @@ declare module './mod' {
 export const helpCommand = command({
     name: 'help',
     alias: ['-h'],
-    description: '帮助信息',
+    description: 'Help information',
     action: ({ opts, args, commands = [] }) => {
         const output: string[] = [];
 
         const addLine = (text = '', indent = 0) =>
             output.push('  '.repeat(indent) + text);
 
-        addLine();
-        addLine(opts.description);
-        addLine('\nOptions:');
+        if (opts.description) {
+            addLine();
+            addLine(opts.description);
+        }
+        if (args.length) {
+            addLine();
+            addLine('\nOptions:');
 
-        const maxAliasLength = args.reduce((max, arg) => {
-            const length = `--${arg.name}, ${arg.alias.map(a => `-${a}`).join(', ')}`.length;
-            return Math.max(max, length);
-        }, 0);
+            const maxAliasLength = args.reduce((max, arg) => {
+                const length = `--${arg.name}, ${arg.alias.map(a => `-${a}`).join(', ')}`.length;
+                return Math.max(max, length);
+            }, 0);
 
-        for (const arg of args) {
-            const argName = `--${arg.name}, ${arg.alias.map(a => `-${a}`).join(', ')}`;
-            const typeInfo = arg.type === ArgType.Boolean ? '' : ` <${ArgType[arg.type].toLowerCase()}>`;
-            const requiredInfo = arg.required ? ' (required)' : '';
-            addLine(`${argName.padEnd(maxAliasLength)}${typeInfo}  ${arg.description}${requiredInfo}`, 1);
+            for (const arg of args) {
+                const argName = `--${arg.name}, ${arg.alias.map(a => `-${a}`).join(', ')}`;
+                const typeInfo = arg.type === ArgType.Boolean ? '' : ` <${ArgType[arg.type].toLowerCase()}>`;
+                const requiredInfo = arg.required ? ' (required)' : '';
+                addLine(`${argName.padEnd(maxAliasLength)}${typeInfo}  ${arg.description ?? ''}${requiredInfo}`, 1);
+            }
         }
 
         if (opts.examples?.length) {
@@ -58,7 +63,7 @@ export const helpCommand = command({
 
             for (const cmd of commands) {
                 const aliases = [cmd.name, ...cmd.alias].join(', ');
-                addLine(`${aliases.padEnd(maxCmdLength)}  ${cmd.description}`, 1);
+                addLine(`${aliases.padEnd(maxCmdLength)}  ${cmd.description ?? ''}`, 1);
             }
         }
         addLine();
